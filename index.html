@@ -506,6 +506,7 @@ const S = {
   recStream: null,         // MediaRecorder용 클론 스트림 (stop 시 cachedAudioStream 보호)
   lastFinalText: '',       // STT 중복 방지용
   lastFinalMs: 0,
+  micPermGranted: false,   // 모바일: getUserMedia 권한 획득 여부
 };
 
 /* ============================================================
@@ -639,10 +640,19 @@ async function startRec() {
       screenPh.style.display = 'none';
 
     } else if (isMobile) {
-      // ── 모바일 오디오: getUserMedia 사용 안 함 ───────────────
-      // Android Chrome에서 getUserMedia 스트림이 열려있으면
-      // SpeechRecognition이 마이크 접근에 실패 → STT 불가
-      // → getUserMedia/MediaRecorder 없이 STT만 사용
+      // ── 모바일 오디오 ────────────────────────────────────────
+      // SpeechRecognition은 getUserMedia와 별도로 마이크 권한이 필요
+      // → 권한만 확보하고 트랙을 즉시 해제 (스트림 유지 안 함)
+      // 두 번째 녹화부터는 micPermGranted로 스킵
+      if (!S.micPermGranted) {
+        try {
+          const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+          tmp.getTracks().forEach(t => t.stop());
+          S.micPermGranted = true;
+        } catch(e) {
+          if (e.name === 'NotAllowedError') throw e;
+        }
+      }
       audioLbl.textContent = '녹음 중...';
 
     } else {
@@ -704,7 +714,7 @@ async function startRec() {
 
 function stopRec() {
   S.recording = false;
-  if (S.recorder?.state !== 'inactive') S.recorder.stop();
+  if (S.recorder?.state !== 'inactive') S.recorder?.stop(); // optional chaining — 모바일에서 null crash 방지
   S.recorder = null;
 
   // 클론 스트림(recStream) 트랙 종료 — cachedAudioStream은 건드리지 않음
