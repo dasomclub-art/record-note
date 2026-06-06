@@ -6,9 +6,9 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인해주세요.' });
+    return res.status(500).json({ error: 'OPENROUTER_API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인해주세요.' });
   }
 
   const { messages, systemPrompt } = req.body;
@@ -32,7 +32,7 @@ module.exports = async function handler(req, res) {
         'X-Title': 'RecordNote',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-sonnet-4-5',
+        model: 'google/gemini-2.0-flash-exp:free',
         max_tokens: 4096,
         messages: openaiMessages,
       }),
