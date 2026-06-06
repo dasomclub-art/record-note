@@ -495,6 +495,7 @@ const S = {
   corrected: null,
   rawText: '',
   cachedAudioStream: null, // 재사용 스트림 (Android 마이크 권한 1회)
+  recStream: null,         // MediaRecorder용 클론 스트림 (stop 시 cachedAudioStream 보호)
 };
 
 /* ============================================================
@@ -652,7 +653,10 @@ async function startRec() {
     if (!S.recording) return; // 그 사이 중지됐으면 패스
 
     const mime = bestMime();
-    S.recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+    // 오디오 모드: MediaRecorder.stop()이 Android에서 원본 트랙을 종료하는 버그 방지
+    // → 캐시 스트림을 clone해서 MediaRecorder에 넘기고, 원본은 계속 살려둠
+    S.recStream = S.mode === 'audio' ? stream.clone() : stream;
+    S.recorder = new MediaRecorder(S.recStream, mime ? { mimeType: mime } : {});
     S.recorder.ondataavailable = e => e.data?.size && S.chunks.push(e.data);
     S.recorder.start(1000);
 
@@ -675,7 +679,12 @@ function stopRec() {
   if (S.recorder?.state !== 'inactive') S.recorder.stop();
   S.recorder = null;
 
-  // 화면 녹화: 트랙 전부 종료 / 오디오: 캐시 스트림 유지(트랙 종료 X)
+  // 클론 스트림(recStream) 트랙 종료 — cachedAudioStream은 건드리지 않음
+  if (S.recStream) {
+    S.recStream.getTracks().forEach(t => t.stop());
+    S.recStream = null;
+  }
+  // 화면 녹화: 원본 스트림 트랙도 종료
   if (S.mode === 'screen') {
     S.stream?.getTracks().forEach(t => t.stop());
   }
@@ -1201,8 +1210,6 @@ if (isMobile) {
   screenTab.classList.remove('on');
   audioTab.classList.add('on');
   S.mode = 'audio';
-  // 페이지 로드 직후 마이크 권한 1회 요청 (이후 녹화 시작 시 팝업 없음)
-  initAudioStream();
 }
 syncModeUI();
 </script>
