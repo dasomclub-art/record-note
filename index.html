@@ -633,7 +633,8 @@ async function startRec() {
       }
       stream = S.cachedAudioStream;
       audioLbl.textContent = '녹음 중...';
-      startWave(stream);
+      // startWave는 STT 이후에 호출 — AudioContext가 먼저 스트림을 잡으면
+      // Android Chrome에서 SpeechRecognition이 마이크 접근 실패
     }
     S.stream = stream;
     S.chunks = [];
@@ -645,22 +646,26 @@ async function startRec() {
     startTimer();
     setRecUI(true);
 
-    // STT를 먼저 단독 시작 (Android Chrome: MediaRecorder와 동시 시작 시 충돌 방지)
+    // 1단계: STT 먼저 단독 시작
     initSTT();
 
-    // MediaRecorder는 STT 안정화 후 시작
-    await new Promise(r => setTimeout(r, 300));
-    if (!S.recording) return; // 그 사이 중지됐으면 패스
+    // 2단계: STT 안정화 대기 후 파형 시각화 (AudioContext 연결)
+    await new Promise(r => setTimeout(r, 400));
+    if (!S.recording) return;
+    if (S.mode === 'audio') startWave(stream);
+
+    // 3단계: MediaRecorder 시작
+    await new Promise(r => setTimeout(r, 200));
+    if (!S.recording) return;
 
     const mime = bestMime();
-    // 오디오 모드: MediaRecorder.stop()이 Android에서 원본 트랙을 종료하는 버그 방지
-    // → 캐시 스트림을 clone해서 MediaRecorder에 넘기고, 원본은 계속 살려둠
+    // 오디오: 클론 스트림으로 MediaRecorder 보호 (stop 시 원본 트랙 종료 방지)
     S.recStream = S.mode === 'audio' ? stream.clone() : stream;
     S.recorder = new MediaRecorder(S.recStream, mime ? { mimeType: mime } : {});
     S.recorder.ondataavailable = e => e.data?.size && S.chunks.push(e.data);
     S.recorder.start(1000);
 
-    // 화면 공유 탭 닫기 등 트랙 종료 감지 (오디오 캐시 스트림은 제외)
+    // 화면 공유 탭 닫기 등 트랙 종료 감지
     if (S.mode === 'screen') {
       stream.getTracks().forEach(t => { t.onended = () => { if (S.recording) stopRec(); }; });
     }
@@ -852,7 +857,14 @@ function initSTT() {
     updateWordCnt();
   };
 
-  r.onerror = ev => { if (ev.error !== 'no-speech') console.warn('STT error', ev.error); };
+  r.onerror = ev => {
+    if (ev.error === 'no-speech') return;
+    console.warn('STT error', ev.error);
+    if (ev.error === 'audio-capture') toast('마이크 접근 오류 — 다시 시도해주세요', 3500);
+    else if (ev.error === 'not-allowed') toast('마이크 권한이 필요합니다', 3500);
+    else if (ev.error === 'network') toast('STT 네트워크 오류', 3000);
+    else toast('STT 오류: ' + ev.error, 3000);
+  };
   r.onend = () => { if (S.recording && S.recog === r) { try { r.start(); } catch(e){} } };
   r.start();
   S.recog = r;
