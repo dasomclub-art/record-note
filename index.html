@@ -1007,14 +1007,14 @@ async function callClaudeVercel(messages, systemPrompt) {
   } catch {
     throw new Error('Vercel 환경에서 실행해주세요. 로컬에서는 /api/claude에 접근할 수 없습니다.');
   }
-  if (res.status === 404) throw new Error('Vercel 환경에서 실행해주세요. /api/claude를 찾을 수 없습니다.');
-  if (res.status === 500) {
-    const d = await res.json().catch(() => ({}));
-    throw new Error(d.error || 'API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.');
-  }
   if (!res.ok) {
-    const d = await res.json().catch(() => ({}));
-    throw new Error(d.error || `API 오류 (${res.status})`);
+    const d = await res.json().catch(() => null);
+    // Vercel 라우팅 404와 API 오류 404를 구분
+    if (res.status === 404 && !d) {
+      throw new Error('Vercel 환경에서 실행해주세요. /api/claude를 찾을 수 없습니다.');
+    }
+    const msg = d?.error || `API 오류 (${res.status})`;
+    throw new Error(msg);
   }
   const data = await res.json();
   return data.content?.[0]?.text || '';
@@ -1042,7 +1042,7 @@ async function callClaudeLocal(messages, systemPrompt) {
       'X-Title': 'RecordNote',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.0-flash-exp:free',
+      model: 'meta-llama/llama-3.1-8b-instruct:free',
       max_tokens: 4096,
       messages: openaiMessages,
     }),
