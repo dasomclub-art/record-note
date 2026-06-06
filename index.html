@@ -671,8 +671,9 @@ async function startRec() {
     initSTT();
 
     if (isMobile && S.mode === 'audio') {
-      // 모바일: pulse 애니메이션만, MediaRecorder 없음
+      // 모바일: pulse + 가짜 파형, MediaRecorder 없음
       startMobilePulse();
+      startFakeWave();
       return;
     }
 
@@ -857,6 +858,33 @@ function stopMobilePulse() {
   document.querySelector('.mic-ring')?.classList.remove('active');
 }
 
+// 모바일 전용: getUserMedia 없이 canvas에 파형처럼 보이는 애니메이션 표시
+function startFakeWave() {
+  const canvas = waveCanvas;
+  const W = canvas.offsetWidth || 300;
+  const H = 120;
+  canvas.width = W; canvas.height = H;
+  const gc = canvas.getContext('2d');
+  const bars = 42;
+  const bw = W / bars;
+
+  function draw() {
+    S.rafId = requestAnimationFrame(draw);
+    gc.clearRect(0, 0, W, H);
+    const t = Date.now() / 600;
+    for (let i = 0; i < bars; i++) {
+      const h = (0.2 + 0.65 * Math.abs(
+        Math.sin(t + i * 0.68) * Math.cos(t * 0.45 + i * 0.31)
+      )) * H * 0.88;
+      const alpha = 0.5 + 0.4 * (h / H);
+      const hue = 210 + (i / bars) * 30;
+      gc.fillStyle = `hsla(${hue},88%,62%,${alpha})`;
+      fillRound(gc, i * bw + 1, H - h, bw - 2, h, 3);
+    }
+  }
+  draw();
+}
+
 /* ============================================================
    STT
    ============================================================ */
@@ -901,14 +929,9 @@ function initSTT() {
     else toast('STT 오류: ' + ev.error, 3000);
   };
 
-  // Android Chrome: 같은 객체를 r.start()로 재시작하면 이전 결과가 반복 재생됨
-  // → onend 시 새 인스턴스로 initSTT() 재호출
-  r.onend = () => {
-    if (S.recording && S.recog === r) {
-      S.recog = null;
-      setTimeout(() => { if (S.recording) initSTT(); }, 150);
-    }
-  };
+  // 같은 인스턴스 재시작 — Android에서 새 인스턴스 생성 시 오히려 STT가 끊김
+  // 중복 텍스트는 lastFinalText 3초 비교로 차단
+  r.onend = () => { if (S.recording && S.recog === r) { try { r.start(); } catch(e){} } };
 
   r.start();
   S.recog = r;
