@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>RecordNote — 회의 &amp; 강의 녹화</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" as="style" crossorigin
+    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:           #FFFFFF;
+      --bg-sub:       #F9FAFB;
+      --accent:       #3182F6;
+      --accent-h:     #1B6EE4;
+      --accent-l:     #EBF3FF;
+      --text:         #191F28;
+      --text-2:       #6B7684;
+      --text-3:       #8B95A1;
+      --border:       #E5E8EB;
+      --border-s:     #F2F4F6;
+      --danger:       #F04452;
+      --danger-l:     #FFF0F1;
+      --success:      #00B493;
+      --success-l:    #E8FAF6;
+      --r:            16px;
+      --r-s:          10px;
+      --shadow:       0 2px 12px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.04);
+      --shadow-m:     0 4px 24px rgba(0,0,0,.10);
+      --ease:         cubic-bezier(.4,0,.2,1);
+      --hdr:          60px;
+      --bar:          80px;
+    }
+
+    html {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: var(--text);
+      background: var(--bg-sub);
+      -webkit-font-smoothing: antialiased;
+    }
+    body { min-height: 100vh; }
+    button { cursor: pointer; border: none; background: none; font-family: inherit; color: inherit; }
+
+    /* ── LAYOUT ─────────────────────────────── */
+    #app { min-height: 100vh; display: flex; flex-direction: column; max-width: 900px; margin: 0 auto; }
+
+    /* ── HEADER ─────────────────────────────── */
+    .hdr {
+      position: sticky; top: 0; z-index: 100;
+      height: var(--hdr);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .hdr-inner {
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; gap: 10px;
+    }
+    .logo { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; text-decoration: none; color: var(--text); flex-shrink: 0; }
+    .logo-box {
+      width: 32px; height: 32px; border-radius: 9px;
+      background: var(--accent); display: flex; align-items: center; justify-content: center;
+    }
+    .seg { display: flex; background: var(--border-s); border-radius: 10px; padding: 3px; gap: 2px; }
+    .seg-btn {
+      padding: 6px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      color: var(--text-2); transition: all .2s var(--ease); min-height: 32px;
+    }
+    .seg-btn.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+    .lang-btn {
+      padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      color: var(--text-2); background: var(--border-s); transition: background .2s;
+    }
+    .lang-btn:hover { background: var(--border); }
+
+    /* ── MAIN ───────────────────────────────── */
+    .main { flex: 1; padding: 16px 16px calc(var(--bar) + 24px); display: flex; flex-direction: column; gap: 12px; }
+
+    /* ── MODE TABS ──────────────────────────── */
+    .tabs { display: flex; background: var(--bg); border-radius: var(--r); padding: 4px; gap: 4px; box-shadow: var(--shadow); }
+    .tab {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+      padding: 10px; border-radius: 12px; font-size: 14px; font-weight: 600;
+      color: var(--text-2); transition: all .2s var(--ease);
+    }
+    .tab.on { background: var(--accent); color: #fff; box-shadow: 0 2px 10px rgba(49,130,246,.3); }
+    .tab:hover:not(.on) { background: var(--border-s); color: var(--text); }
+
+    /* ── CARD ───────────────────────────────── */
+    .card { background: var(--bg); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+
+    /* ── MEDIA AREA ─────────────────────────── */
+    .screen-wrap {
+      background: #0D0F14; border-radius: var(--r); overflow: hidden;
+      aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; min-height: 200px;
+    }
+    #previewVideo { width: 100%; height: 100%; object-fit: contain; display: none; }
+    .screen-ph { display: flex; flex-direction: column; align-items: center; gap: 12px; color: #546578; }
+    .screen-ph p { font-size: 14px; text-align: center; line-height: 1.6; }
+
+    .audio-wrap {
+      background: linear-gradient(160deg,#0D0F14 0%,#141820 100%);
+      border-radius: var(--r); overflow: hidden; padding: 24px 20px 20px;
+      display: flex; flex-direction: column; align-items: center; gap: 16px; min-height: 200px;
+    }
+    .mic-ring {
+      width: 44px; height: 44px; border-radius: 50%;
+      background: rgba(49,130,246,.18); display: flex; align-items: center; justify-content: center; color: var(--accent);
+    }
+    #waveCanvas { width: 100%; border-radius: 8px; display: block; }
+    .audio-lbl { font-size: 13px; color: #546578; }
+
+    /* ── REC INDICATOR ──────────────────────── */
+    .rec-bar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 16px; background: var(--danger-l);
+      border-radius: var(--r-s); border: 1px solid rgba(240,68,82,.18);
+    }
+    .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); animation: blink 1.2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+    .rec-lbl { font-size: 13px; font-weight: 600; color: var(--danger); }
+    .rec-time { font-size: 14px; font-weight: 700; color: var(--danger); font-variant-numeric: tabular-nums; margin-left: 2px; }
+
+    /* ── TEXT PANEL ─────────────────────────── */
+    .panel-hdr { display: flex; align-items: center; justify-content: space-between; padding: 15px 20px; border-bottom: 1px solid var(--border-s); }
+    .panel-title { font-size: 15px; font-weight: 700; }
+    .panel-meta { display: flex; align-items: center; gap: 8px; }
+    .word-cnt { font-size: 12px; color: var(--text-3); }
+
+    .btn-sec {
+      padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      color: var(--accent); background: var(--accent-l); transition: all .18s;
+    }
+    .btn-sec:hover:not(:disabled) { background: #d6e9ff; }
+    .btn-sec:disabled { opacity: .4; cursor: not-allowed; }
+
+    .tx-area { padding: 16px 20px; min-height: 200px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .empty-ph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; height: 160px; color: var(--text-3); text-align: center; }
+    .empty-ph p { font-size: 14px; line-height: 1.6; }
+
+    .tx-row { display: flex; gap: 10px; align-items: flex-start; }
+    .tx-time { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums; padding-top: 3px; min-width: 42px; }
+    .tx-text { font-size: 15px; line-height: 1.65; }
+    .tx-row.interim { opacity: .55; }
+    .tx-row.interim .tx-text { font-style: italic; }
+
+    /* ── FLOATING PANEL (results / diff) ────── */
+    .float-panel {
+      position: fixed; bottom: var(--bar); left: 0; right: 0;
+      max-width: 900px; margin: 0 auto; z-index: 90; padding: 0 16px 12px;
+    }
+    .float-panel .card { max-height: 62vh; display: flex; flex-direction: column; }
+    .float-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 15px 20px; border-bottom: 1px solid var(--border-s); flex-shrink: 0;
+    }
+    .float-acts { display: flex; gap: 8px; }
+    .btn-icon {
+      padding: 7px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      color: var(--text-2); background: var(--border-s); transition: all .18s;
+    }
+    .btn-icon:hover { background: var(--border); color: var(--text); }
+    .btn-icon.red { color: var(--danger); background: var(--danger-l); }
+    .float-body { padding: 20px; overflow-y: auto; flex: 1; }
+    .float-body h2 { font-size: 16px; font-weight: 700; margin-bottom: 14px; }
+    .float-body h3 { font-size: 14px; font-weight: 700; color: var(--accent); margin: 14px 0 5px; }
+    .float-body h4 { font-size: 13px; font-weight: 700; margin: 10px 0 3px; }
+    .float-body p  { font-size: 14px; line-height: 1.75; color: var(--text-2); margin: 3px 0; }
+    .float-body li { font-size: 14px; line-height: 1.75; color: var(--text-2); margin-bottom: 3px; }
+    .float-body ul { padding-left: 18px; }
+    .float-body code { background: var(--border-s); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    .float-body strong { font-weight: 700; color: var(--text); }
+
+    /* ── DIFF ───────────────────────────────── */
+    .btn-pri {
+      padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      color: #fff; background: var(--accent); transition: background .18s;
+    }
+    .btn-pri:hover { background: var(--accent-h); }
+    .diff-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 8px; }
+    .diff-box {
+      font-size: 14px; line-height: 1.8; padding: 14px 16px;
+      border-radius: var(--r-s); background: var(--bg-sub); word-break: break-word;
+    }
+    .d-del { background: rgba(240,68,82,.14); text-decoration: line-through; color: var(--danger); border-radius: 3px; padding: 0 2px; }
+    .d-add { background: rgba(0,180,147,.14); color: var(--success); border-radius: 3px; padding: 0 2px; }
+
+    /* ── CONTROL BAR ────────────────────────── */
+    .ctrl-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      max-width: 900px; margin: 0 auto; z-index: 100;
+      height: var(--bar);
+      background: rgba(255,255,255,.95);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      padding: 0 20px; padding-bottom: env(safe-area-inset-bottom);
+    }
+    .cb {
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      padding: 9px 18px; border-radius: 14px; font-size: 12px; font-weight: 600;
+      color: var(--text-2); background: var(--border-s);
+      transition: all .2s var(--ease); min-width: 72px; min-height: 56px;
+    }
+    .cb:hover:not(:disabled) { background: var(--border); transform: translateY(-1px); }
+    .cb:active:not(:disabled) { transform: translateY(0); }
+    .cb:disabled { opacity: .4; cursor: not-allowed; }
+    .cb.rec { background: var(--accent); color: #fff; min-width: 108px; box-shadow: 0 4px 14px rgba(49,130,246,.35); }
+    .cb.rec:hover:not(:disabled) { background: var(--accent-h); box-shadow: 0 6px 18px rgba(49,130,246,.45); }
+    .cb.rec.on { background: var(--danger); box-shadow: 0 4px 14px rgba(240,68,82,.35); }
+    .cb.rec.on:hover { background: #d93241; box-shadow: 0 6px 18px rgba(240,68,82,.45); }
+
+    /* ── LOADING ────────────────────────────── */
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+    .spinner-lg { width: 30px; height: 30px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-ph { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px; color: var(--text-3); font-size: 14px; }
+
+    /* ── TOAST ──────────────────────────────── */
+    .toast {
+      position: fixed; bottom: calc(var(--bar) + 14px); left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: #191F28; color: #fff;
+      padding: 12px 20px; border-radius: 10px; font-size: 14px; font-weight: 500;
+      z-index: 300; opacity: 0; pointer-events: none;
+      transition: opacity .22s, transform .22s;
+      white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── UTIL ───────────────────────────────── */
+    .hidden { display: none !important; }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ── RESPONSIVE ─────────────────────────── */
+    @media(min-width:600px){
+      .main { padding: 20px 24px calc(var(--bar)+32px); gap: 16px; }
+      .hdr-inner { padding: 0 24px; }
+      .ctrl-bar { padding: 0 24px; gap: 16px; }
+      .screen-wrap, .audio-wrap { min-height: 280px; }
+      #waveCanvas { height: 150px; }
+    }
+    @media(min-width:900px){
+      .main { padding: 24px 32px calc(var(--bar)+40px); }
+      .hdr-inner { padding: 0 32px; }
+      .ctrl-bar { padding: 0 32px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="hdr-inner">
+      <a class="logo" href="#">
+        <div class="logo-box">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <circle cx="9" cy="9" r="4.5" fill="#fff"/>
+            <circle cx="9" cy="9" r="7.5" stroke="#fff" stroke-width="1.5" stroke-dasharray="2.5 2"/>
+          </svg>
+        </div>
+        RecordNote
+      </a>
+
+      <div class="seg" id="typeSeg">
+        <button class="seg-btn on" data-type="meeting">회의</button>
+        <button class="seg-btn" data-type="lecture">강의</button>
+      </div>
+
+      <button class="lang-btn" id="langBtn">한 / En</button>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- Mode tabs -->
+    <div class="tabs" id="modeTabs">
+      <button class="tab on" data-mode="screen">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="2" width="14" height="10" rx="2"/>
+          <path d="M5.5 14h5M8 12v2"/>
+        </svg>
+        화면 녹화
+      </button>
+      <button class="tab" data-mode="audio">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <rect x="5.5" y="1" width="5" height="9" rx="2.5"/>
+          <path d="M3 8a5 5 0 0010 0M8 13v2"/>
+        </svg>
+        음성 녹음
+      </button>
+    </div>
+
+    <!-- Media area -->
+    <div id="mediaArea">
+      <!-- Screen -->
+      <div id="screenWrap" class="screen-wrap">
+        <video id="previewVideo" autoplay muted playsinline></video>
+        <div class="screen-ph" id="screenPh">
+          <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+            <rect x="3" y="8" width="46" height="30" rx="4" stroke="#3D4F63" stroke-width="2"/>
+            <path d="M18 46h16M26 38v8" stroke="#3D4F63" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="26" cy="23" r="7" stroke="#3D4F63" stroke-width="2"/>
+            <path d="M26 19.5v3.5l2.5 2.5" stroke="#3D4F63" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <p>녹화 시작 버튼을 눌러<br>공유할 화면을 선택하세요</p>
+        </div>
+      </div>
+      <!-- Audio -->
+      <div id="audioWrap" class="audio-wrap hidden">
+        <div class="mic-ring">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+            <rect x="7.5" y="2" width="7" height="11" rx="3.5" fill="currentColor" stroke="none"/>
+            <path d="M4 11a7 7 0 0014 0M11 18v3"/>
+          </svg>
+        </div>
+        <canvas id="waveCanvas" height="120"></canvas>
+        <span class="audio-lbl" id="audioLbl">마이크 대기 중...</span>
+      </div>
+    </div>
+
+    <!-- Recording indicator -->
+    <div class="rec-bar hidden" id="recBar">
+      <span class="rec-dot"></span>
+      <span class="rec-lbl">REC</span>
+      <span class="rec-time" id="recTime">00:00</span>
+    </div>
+
+    <!-- Transcript panel -->
+    <div class="card">
+      <div class="panel-hdr">
+        <span class="panel-title">실시간 텍스트</span>
+        <div class="panel-meta">
+          <span class="word-cnt" id="wordCnt">0 단어</span>
+          <button class="btn-sec" id="correctBtn" disabled>교정하기</button>
+        </div>
+      </div>
+      <div class="tx-area" id="txArea">
+        <div class="empty-ph" id="txPh">
+          <svg width="38" height="38" viewBox="0 0 38 38" fill="none">
+            <rect x="4" y="6" width="30" height="26" rx="4" stroke="#C5CCD6" stroke-width="1.5"/>
+            <path d="M10 14h18M10 19.5h13M10 25h8" stroke="#C5CCD6" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <p>녹화를 시작하면<br>실시간 자막이 여기에 표시됩니다</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Results floating panel -->
+  <div class="float-panel hidden" id="resPanel">
+    <div class="card">
+      <div class="float-hdr">
+        <span class="panel-title" id="resTitle">AI 정리 결과</span>
+        <div class="float-acts">
+          <button class="btn-icon" id="cpResBtn">복사</button>
+          <button class="btn-icon" id="dlResBtn">다운로드</button>
+          <button class="btn-icon red" id="closeResBtn">닫기</button>
+        </div>
+      </div>
+      <div class="float-body" id="resBody">
+        <div class="loading-ph"><div class="spinner-lg"></div><span>AI가 정리 중입니다...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Diff floating panel -->
+  <div class="float-panel hidden" id="diffPanel">
+    <div class="card">
+      <div class="float-hdr">
+        <span class="panel-title">교정 결과</span>
+        <div class="float-acts">
+          <button class="btn-pri" id="applyBtn">교정본 적용</button>
+          <button class="btn-sec" id="keepBtn">원본 유지</button>
+        </div>
+      </div>
+      <div class="float-body" id="diffBody">
+        <div class="loading-ph"><div class="spinner-lg"></div><span>교정 중...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Control bar -->
+  <div class="ctrl-bar">
+    <button class="cb rec" id="recBtn">
+      <svg id="recIco" width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+        <circle cx="10" cy="10" r="6"/>
+      </svg>
+      <span id="recLbl">녹화 시작</span>
+    </button>
+    <button class="cb" id="sumBtn" disabled>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M3 5h14M3 9h10M3 13h7"/>
+        <circle cx="16" cy="15" r="3"/>
+        <path d="M15 15l.8.8 1.4-1.6" stroke-linejoin="round"/>
+      </svg>
+      <span>정리하기</span>
+    </button>
+    <button class="cb" id="dlTxBtn" disabled>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 3v10M6 9l4 4 4-4M3 17h14"/>
+      </svg>
+      <span>다운로드</span>
+    </button>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   STATE
+   ============================================================ */
+const S = {
+  mode: 'screen',         // 'screen' | 'audio'
+  type: 'meeting',        // 'meeting' | 'lecture'
+  lang: 'ko-KR',
+  recording: false,
+  stream: null,
+  recorder: null,
+  chunks: [],
+  audioCtx: null,
+  analyser: null,
+  rafId: null,
+  recog: null,
+  entries: [],            // [{ t, text }]
+  interim: '',
+  startMs: 0,
+  timerIv: null,
+  corrected: null,
+  rawText: '',
+};
+
+/* ============================================================
+   DOM
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const typeSeg   = $('typeSeg');
+const modeTabs  = $('modeTabs');
+const screenWrap= $('screenWrap');
+const audioWrap = $('audioWrap');
+const prevVid   = $('previewVideo');
+const screenPh  = $('screenPh');
+const waveCanvas= $('waveCanvas');
+const audioLbl  = $('audioLbl');
+const recBar    = $('recBar');
+const recTime   = $('recTime');
+const txArea    = $('txArea');
+const txPh      = $('txPh');
+const wordCnt   = $('wordCnt');
+const correctBtn= $('correctBtn');
+const recBtn    = $('recBtn');
+const recIco    = $('recIco');
+const recLbl    = $('recLbl');
+const sumBtn    = $('sumBtn');
+const dlTxBtn   = $('dlTxBtn');
+const resPanel  = $('resPanel');
+const resTitle  = $('resTitle');
+const resBody   = $('resBody');
+const cpResBtn  = $('cpResBtn');
+const dlResBtn  = $('dlResBtn');
+const closeResBtn=$('closeResBtn');
+const diffPanel = $('diffPanel');
+const diffBody  = $('diffBody');
+const applyBtn  = $('applyBtn');
+const keepBtn   = $('keepBtn');
+const langBtn   = $('langBtn');
+const toastEl   = $('toast');
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+let toastTmr;
+function toast(msg, ms = 2600) {
+  clearTimeout(toastTmr);
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  toastTmr = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+
+/* ============================================================
+   TYPE & MODE
+   ============================================================ */
+typeSeg.addEventListener('click', e => {
+  const b = e.target.closest('.seg-btn');
+  if (!b) return;
+  typeSeg.querySelectorAll('.seg-btn').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  S.type = b.dataset.type;
+});
+
+modeTabs.addEventListener('click', e => {
+  const b = e.target.closest('.tab');
+  if (!b) return;
+  if (S.recording) return toast('녹화를 먼저 중지해주세요');
+  modeTabs.querySelectorAll('.tab').forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  S.mode = b.dataset.mode;
+  syncModeUI();
+});
+
+function syncModeUI() {
+  if (S.mode === 'screen') {
+    screenWrap.classList.remove('hidden');
+    audioWrap.classList.add('hidden');
+  } else {
+    screenWrap.classList.add('hidden');
+    audioWrap.classList.remove('hidden');
+  }
+}
+
+/* ============================================================
+   LANGUAGE
+   ============================================================ */
+langBtn.addEventListener('click', () => {
+  S.lang = S.lang === 'ko-KR' ? 'en-US' : 'ko-KR';
+  langBtn.textContent = S.lang === 'ko-KR' ? '한 / En' : 'En / 한';
+  if (S.recog) S.recog.lang = S.lang;
+  toast(S.lang === 'ko-KR' ? '한국어로 전환됨' : 'Switched to English');
+});
+
+/* ============================================================
+   RECORDING
+   ============================================================ */
+recBtn.addEventListener('click', () => S.recording ? stopRec() : startRec());
+
+async function startRec() {
+  try {
+    let stream;
+    if (S.mode === 'screen') {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
+      prevVid.srcObject = stream;
+      prevVid.style.display = 'block';
+      screenPh.style.display = 'none';
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioLbl.textContent = '녹음 중...';
+      startWave(stream);
+    }
+    S.stream = stream;
+    S.chunks = [];
+
+    const mime = bestMime();
+    S.recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+    S.recorder.ondataavailable = e => e.data?.size && S.chunks.push(e.data);
+    S.recorder.start(1000);
+
+    stream.getTracks().forEach(t => { t.onended = () => { if (S.recording) stopRec(); }; });
+
+    S.recording = true;
+    S.startMs = Date.now();
+    S.entries = [];
+    S.interim = '';
+    clearTx();
+    startTimer();
+    initSTT();
+    setRecUI(true);
+  } catch (err) {
+    const msg = err.name === 'NotAllowedError' ? '미디어 접근 권한이 필요합니다'
+              : err.name === 'NotSupportedError' ? '이 브라우저에서는 지원되지 않습니다'
+              : '오류: ' + err.message;
+    toast(msg, 3500);
+  }
+}
+
+function stopRec() {
+  S.recording = false;
+  S.recorder?.state !== 'inactive' && S.recorder.stop();
+  S.stream?.getTracks().forEach(t => t.stop());
+  S.stream = null;
+  S.recog?.abort();
+  S.recog = null;
+  stopTimer();
+  stopWave();
+  if (S.mode === 'screen') {
+    prevVid.srcObject = null;
+    prevVid.style.display = 'none';
+    screenPh.style.display = 'flex';
+  } else {
+    audioLbl.textContent = '마이크 대기 중...';
+  }
+  setRecUI(false);
+  toast('녹화가 완료되었습니다');
+}
+
+function setRecUI(on) {
+  recBtn.classList.toggle('on', on);
+  if (on) {
+    recIco.innerHTML = '<rect x="5" y="5" width="10" height="10" rx="2" fill="currentColor"/>';
+    recLbl.textContent = '녹화 중지';
+    recBar.classList.remove('hidden');
+    sumBtn.disabled = true;
+    dlTxBtn.disabled = true;
+    correctBtn.disabled = true;
+  } else {
+    recIco.innerHTML = '<circle cx="10" cy="10" r="6" fill="currentColor"/>';
+    recLbl.textContent = '녹화 시작';
+    recBar.classList.add('hidden');
+    const has = S.entries.length > 0;
+    sumBtn.disabled = !has;
+    dlTxBtn.disabled = !has;
+    correctBtn.disabled = !has;
+  }
+}
+
+/* ============================================================
+   TIMER
+   ============================================================ */
+function startTimer() {
+  S.timerIv = setInterval(() => {
+    const s = Math.floor((Date.now() - S.startMs) / 1000);
+    recTime.textContent = `${pad(Math.floor(s/60))}:${pad(s%60)}`;
+  }, 1000);
+}
+function stopTimer() { clearInterval(S.timerIv); S.timerIv = null; }
+const pad = n => String(n).padStart(2, '0');
+
+/* ============================================================
+   WAVEFORM
+   ============================================================ */
+function startWave(stream) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  S.audioCtx = ctx; S.analyser = analyser;
+  animWave();
+}
+
+function stopWave() {
+  if (S.rafId) { cancelAnimationFrame(S.rafId); S.rafId = null; }
+  if (S.audioCtx) { S.audioCtx.close(); S.audioCtx = null; S.analyser = null; }
+  clearCanvas();
+}
+
+function animWave() {
+  if (!S.analyser) return;
+  const canvas = waveCanvas;
+  const W = canvas.offsetWidth || 300;
+  const H = 120;
+  canvas.width = W; canvas.height = H;
+  const gc = canvas.getContext('2d');
+  const buf = new Uint8Array(S.analyser.frequencyBinCount);
+
+  function draw() {
+    S.rafId = requestAnimationFrame(draw);
+    S.analyser.getByteFrequencyData(buf);
+    gc.clearRect(0, 0, W, H);
+    const bw = (W / buf.length) * 2.5;
+    let x = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const h = (buf[i] / 255) * H * 0.88;
+      const alpha = 0.6 + (buf[i] / 255) * 0.4;
+      const hue = 210 + (i / buf.length) * 30;
+      gc.fillStyle = `hsla(${hue},88%,62%,${alpha})`;
+      fillRound(gc, x, H - h, bw - 2, h, 3);
+      x += bw;
+    }
+  }
+  draw();
+}
+
+function clearCanvas() {
+  const canvas = waveCanvas;
+  const W = canvas.offsetWidth || 300;
+  canvas.width = W; canvas.height = 120;
+  const gc = canvas.getContext('2d');
+  gc.strokeStyle = 'rgba(70,90,120,.25)';
+  gc.lineWidth = 1.5;
+  gc.beginPath(); gc.moveTo(0, 60); gc.lineTo(W, 60); gc.stroke();
+}
+
+function fillRound(gc, x, y, w, h, r) {
+  if (h < 1) return;
+  r = Math.min(r, h / 2, w / 2);
+  if (gc.roundRect) {
+    gc.beginPath(); gc.roundRect(x, y, w, h, r); gc.fill();
+  } else {
+    gc.beginPath();
+    gc.moveTo(x + r, y);
+    gc.arcTo(x + w, y, x + w, y + h, r);
+    gc.arcTo(x + w, y + h, x, y + h, r);
+    gc.arcTo(x, y + h, x, y, r);
+    gc.arcTo(x, y, x + w, y, r);
+    gc.closePath(); gc.fill();
+  }
+}
+
+/* draw idle line on load */
+window.addEventListener('load', clearCanvas);
+
+/* ============================================================
+   STT
+   ============================================================ */
+function initSTT() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast('이 브라우저는 실시간 자막을 지원하지 않습니다', 3500);
+
+  const r = new SR();
+  r.lang = S.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+
+  r.onresult = ev => {
+    let interim = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const res = ev.results[i];
+      if (res.isFinal) {
+        const txt = res[0].transcript.trim();
+        if (txt) {
+          const sec = Math.floor((Date.now() - S.startMs) / 1000);
+          S.entries.push({ t: `${pad(Math.floor(sec/60))}:${pad(sec%60)}`, text: txt });
+          appendTxRow(S.entries.at(-1), false);
+        }
+      } else {
+        interim += res[0].transcript;
+      }
+    }
+    S.interim = interim;
+    syncInterim();
+    updateWordCnt();
+  };
+
+  r.onerror = ev => { if (ev.error !== 'no-speech') console.warn('STT error', ev.error); };
+  r.onend = () => { if (S.recording && S.recog === r) { try { r.start(); } catch(e){} } };
+  r.start();
+  S.recog = r;
+  txPh.style.display = 'none';
+}
+
+/* ============================================================
+   TRANSCRIPT RENDERING
+   ============================================================ */
+function clearTx() {
+  txArea.querySelectorAll('.tx-row').forEach(el => el.remove());
+  txPh.style.display = 'flex';
+  wordCnt.textContent = '0 단어';
+}
+
+function appendTxRow(entry, isInterim) {
+  const div = document.createElement('div');
+  div.className = 'tx-row' + (isInterim ? ' interim' : '');
+  div.dataset.final = isInterim ? '0' : '1';
+  div.innerHTML = `<span class="tx-time">${entry.t}</span><span class="tx-text">${esc(entry.text)}</span>`;
+  txArea.appendChild(div);
+  txArea.scrollTop = txArea.scrollHeight;
+  return div;
+}
+
+function syncInterim() {
+  txArea.querySelectorAll('.tx-row.interim').forEach(el => el.remove());
+  if (S.interim) appendTxRow({ t: '···', text: S.interim }, true);
+}
+
+function updateWordCnt() {
+  S.rawText = S.entries.map(e => e.text).join(' ');
+  const n = S.rawText.trim() ? S.rawText.trim().split(/\s+/).length : 0;
+  wordCnt.textContent = `${n} 단어`;
+}
+
+/* ============================================================
+   SUMMARIZE
+   ============================================================ */
+sumBtn.addEventListener('click', async () => {
+  if (!S.entries.length) return toast('텍스트가 없습니다');
+  const full = S.entries.map(e => `[${e.t}] ${e.text}`).join('\n');
+  const isMtg = S.type === 'meeting';
+
+  const sys = isMtg
+    ? `당신은 전문 회의록 작성 도우미입니다. 전사 텍스트를 분석해 아래 형식으로 작성하세요.
+
+# 회의록
+
+**일시:** (전사 내용 기반 추정)
+**참석자:** (언급된 이름/역할 추정)
+
+## 주요 안건
+-
+
+## 논의 내용
+-
+
+## 결정 사항
+-
+
+## 액션 아이템
+- [ ] 담당자: 내용
+
+마크다운 형식으로 전문적으로 작성하세요.`
+    : `당신은 전문 강의 요약 도우미입니다. 전사 텍스트를 분석해 아래 형식으로 작성하세요.
+
+# 강의 요약
+
+## 핵심 주제
+-
+
+## 단원별 요약
+###
+
+## 중요 개념
+-
+
+## 키워드
+\`키워드1\`, \`키워드2\`, ...
+
+## 질문 포인트
+-
+
+마크다운 형식으로 작성하세요.`;
+
+  resTitle.textContent = isMtg ? '회의록' : '강의 요약';
+  resPanel.classList.remove('hidden');
+  diffPanel.classList.add('hidden');
+  resBody.innerHTML = `<div class="loading-ph"><div class="spinner-lg"></div><span>AI가 정리 중입니다...</span></div>`;
+
+  try {
+    const txt = await callClaude(
+      [{ role: 'user', content: `다음 ${isMtg ? '회의' : '강의'} 전사 텍스트를 정리해주세요:\n\n${full}` }],
+      sys
+    );
+    resBody.innerHTML = md2html(txt);
+    resBody.dataset.raw = txt;
+  } catch (err) {
+    resBody.innerHTML = `<div class="loading-ph" style="color:var(--danger)">${esc(err.message)}</div>`;
+  }
+});
+
+closeResBtn.addEventListener('click', () => resPanel.classList.add('hidden'));
+cpResBtn.addEventListener('click', async () => {
+  const txt = resBody.dataset.raw || resBody.innerText;
+  try { await navigator.clipboard.writeText(txt); toast('클립보드에 복사됨'); }
+  catch { toast('복사 실패'); }
+});
+dlResBtn.addEventListener('click', () => {
+  const txt = resBody.dataset.raw || resBody.innerText;
+  dlText(txt, S.type === 'meeting' ? '회의록.txt' : '강의요약.txt');
+});
+
+/* ============================================================
+   CORRECTION
+   ============================================================ */
+correctBtn.addEventListener('click', async () => {
+  if (!S.entries.length) return;
+  const full = S.entries.map(e => e.text).join(' ');
+
+  diffPanel.classList.remove('hidden');
+  resPanel.classList.add('hidden');
+  diffBody.innerHTML = `<div class="loading-ph"><div class="spinner-lg"></div><span>교정 중...</span></div>`;
+
+  try {
+    const corrected = await callClaude(
+      [{ role: 'user', content: `다음 텍스트의 오탈자와 문법 오류를 교정해주세요. 교정된 텍스트만 출력하세요:\n\n${full}` }],
+      '한국어/영어 교정 전문가입니다. 오탈자·문법·띄어쓰기 오류를 교정하세요. 원문 의미를 최대한 유지하고 교정된 텍스트만 반환하세요.'
+    );
+    S.corrected = corrected;
+    diffBody.innerHTML = `
+      <div class="diff-lbl">변경 사항 (취소선: 삭제 / 초록: 추가)</div>
+      <div class="diff-box">${buildDiff(full, corrected)}</div>
+    `;
+  } catch (err) {
+    diffBody.innerHTML = `<div class="loading-ph" style="color:var(--danger)">${esc(err.message)}</div>`;
+  }
+});
+
+applyBtn.addEventListener('click', () => {
+  if (!S.corrected) return;
+  // Replace entries with corrected sentences
+  const sents = S.corrected.match(/[^.!?。]+[.!?。]?/g) || [S.corrected];
+  S.entries = sents.map((s, i) => ({
+    t: S.entries[i]?.t || '00:00',
+    text: s.trim()
+  })).filter(e => e.text);
+  txArea.querySelectorAll('.tx-row').forEach(el => el.remove());
+  txPh.style.display = 'none';
+  S.entries.forEach(e => appendTxRow(e, false));
+  updateWordCnt();
+  S.corrected = null;
+  diffPanel.classList.add('hidden');
+  toast('교정본이 적용되었습니다');
+});
+
+keepBtn.addEventListener('click', () => { diffPanel.classList.add('hidden'); S.corrected = null; });
+
+/* ============================================================
+   DOWNLOAD TRANSCRIPT
+   ============================================================ */
+dlTxBtn.addEventListener('click', () => {
+  if (!S.entries.length) return;
+  dlText(S.entries.map(e => `[${e.t}] ${e.text}`).join('\n'), '전사본.txt');
+});
+
+function dlText(text, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  a.download = name; a.click();
+  toast(`${name} 저장 완료`);
+}
+
+/* ============================================================
+   API CALL
+   ============================================================ */
+async function callClaude(messages, systemPrompt) {
+  let res;
+  try {
+    res = await fetch('/api/claude', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, systemPrompt }),
+    });
+  } catch {
+    throw new Error('Vercel 환경에서 실행해주세요. 로컬에서는 /api/claude에 접근할 수 없습니다.');
+  }
+  if (res.status === 404) throw new Error('Vercel 환경에서 실행해주세요. /api/claude를 찾을 수 없습니다.');
+  if (res.status === 500) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error || 'ANTHROPIC_API_KEY가 설정되지 않았습니다. Vercel 환경변수를 확인하세요.');
+  }
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error || `API 오류 (${res.status})`);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text || '';
+}
+
+/* ============================================================
+   DIFF (word-level LCS)
+   ============================================================ */
+function buildDiff(orig, corr) {
+  const ow = orig.split(/\s+/).filter(Boolean);
+  const cw = corr.split(/\s+/).filter(Boolean);
+  const m = ow.length, n = cw.length;
+  // DP table
+  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = ow[i-1] === cw[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+
+  const ops = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && ow[i-1] === cw[j-1]) { ops.unshift({ t: '=', w: ow[i-1] }); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { ops.unshift({ t: '+', w: cw[j-1] }); j--; }
+    else { ops.unshift({ t: '-', w: ow[i-1] }); i--; }
+  }
+  return ops.map(o =>
+    o.t === '=' ? esc(o.w)
+    : o.t === '-' ? `<span class="d-del">${esc(o.w)}</span>`
+    : `<span class="d-add">${esc(o.w)}</span>`
+  ).join(' ');
+}
+
+/* ============================================================
+   SIMPLE MARKDOWN → HTML
+   ============================================================ */
+function md2html(md) {
+  return md
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')  // escape first
+    .replace(/^# (.+)$/gm,   '<h2>$1</h2>')
+    .replace(/^## (.+)$/gm,  '<h3>$1</h3>')
+    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/^- \[ \] (.+)$/gm, '<p>☐ $1</p>')
+    .replace(/^- \[x\] (.+)$/gm, '<p>☑ $1</p>')
+    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/gms, '<ul>$1</ul>')
+    .replace(/\n{2,}/g, '\n')
+    .split('\n').map(line =>
+      /^<[hup]|^$/.test(line.trim()) ? line : `<p>${line}</p>`
+    ).join('\n');
+}
+
+/* ============================================================
+   UTILS
+   ============================================================ */
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function bestMime() {
+  const types = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm','audio/webm;codecs=opus','audio/ogg;codecs=opus'];
+  return types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+syncModeUI();
+</script>
+</body>
+</html>
