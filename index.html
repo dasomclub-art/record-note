@@ -901,7 +901,12 @@ function initSTT() {
   if (!SR) return toast('이 브라우저는 실시간 자막을 지원하지 않습니다', 3500);
 
   const r = new SR();
-  r.lang = S.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
+  r.lang = S.lang;
+  r.continuous = false;     // 문장 단위 인식 — 매번 새 인스턴스로 재시작해 Android 누적 컨텍스트 방지
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+
+  let sessionEntryIdx = -1; // 이 인식 세션에서 생성된 entry 인덱스 (-1 = 아직 없음)
 
   r.onresult = ev => {
     let interim = '';
@@ -910,18 +915,17 @@ function initSTT() {
       if (res.isFinal) {
         const txt = res[0].transcript.trim();
         if (!txt) continue;
-        if (S.resultIndexMap[i] !== undefined) {
-          // Android Chrome: 같은 result index가 refinement로 재전송됨 → 기존 항목 텍스트만 수정
-          const entryIdx = S.resultIndexMap[i];
-          S.entries[entryIdx].text = txt;
-          const rows = txArea.querySelectorAll('.tx-row:not(.interim)');
-          if (rows[entryIdx]) rows[entryIdx].querySelector('.tx-text').textContent = txt;
-        } else {
-          // 새 확정 항목 추가
-          S.resultIndexMap[i] = S.entries.length;
+        if (sessionEntryIdx === -1) {
+          // 이 세션의 첫 final → 새 행 추가
+          sessionEntryIdx = S.entries.length;
           const sec = Math.floor((Date.now() - S.startMs) / 1000);
           S.entries.push({ t: `${pad(Math.floor(sec/60))}:${pad(sec%60)}`, text: txt });
           appendTxRow(S.entries.at(-1), false);
+        } else {
+          // 같은 세션의 refinement → 기존 행만 업데이트, 새 행 추가 안 함
+          S.entries[sessionEntryIdx].text = txt;
+          const rows = txArea.querySelectorAll('.tx-row:not(.interim)');
+          if (rows[sessionEntryIdx]) rows[sessionEntryIdx].querySelector('.tx-text').textContent = txt;
         }
       } else {
         interim += res[0].transcript;
@@ -933,7 +937,6 @@ function initSTT() {
   };
 
   r.onerror = ev => {
-    // aborted: stopRec()의 recog.abort() 호출 시 정상 발생 — 무시
     if (ev.error === 'no-speech' || ev.error === 'aborted') return;
     console.warn('STT error', ev.error);
     if (ev.error === 'audio-capture') toast('마이크 접근 오류 — 다시 시도해주세요', 3500);
@@ -942,9 +945,13 @@ function initSTT() {
     else toast('STT 오류: ' + ev.error, 3000);
   };
 
-  // 같은 인스턴스 재시작 — Android에서 새 인스턴스 생성 시 오히려 STT가 끊김
-  // 중복 텍스트는 lastFinalText 3초 비교로 차단
-  r.onend = () => { if (S.recording && S.recog === r) { try { r.start(); } catch(e){} } };
+  // 새 인스턴스로 재시작 — 같은 인스턴스 r.start() 재사용 시 Android가 이전 음성을 새 결과에 누적
+  r.onend = () => {
+    if (S.recording && S.recog === r) {
+      S.recog = null;
+      setTimeout(() => { if (S.recording) initSTT(); }, 300);
+    }
+  };
 
   r.start();
   S.recog = r;
