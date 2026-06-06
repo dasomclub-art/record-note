@@ -485,6 +485,7 @@ const S = {
   chunks: [],
   audioCtx: null,
   analyser: null,
+  waveSource: null,       // MediaStreamSource node (disconnect 용)
   rafId: null,
   recog: null,
   entries: [],            // [{ t, text }]
@@ -568,6 +569,8 @@ modeTabs.addEventListener('click', e => {
   b.classList.add('on');
   S.mode = b.dataset.mode;
   syncModeUI();
+  // 음성 탭 전환 시 미리 마이크 권한 요청 (팝업 1회)
+  if (b.dataset.mode === 'audio') initAudioStream();
 });
 
 function syncModeUI() {
@@ -595,6 +598,24 @@ langBtn.addEventListener('click', () => {
    ============================================================ */
 recBtn.addEventListener('click', () => S.recording ? stopRec() : startRec());
 
+// 마이크 스트림을 미리 1회만 요청해 전역 캐시에 저장
+async function initAudioStream() {
+  if (S.cachedAudioStream?.active) return; // 이미 살아있으면 재사용
+  try {
+    // 이미 권한이 granted인지 먼저 확인
+    const perm = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
+    if (perm?.state === 'denied') {
+      toast('마이크 접근이 차단되어 있습니다. 브라우저 설정에서 허용해주세요', 4000);
+      return;
+    }
+    S.cachedAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    const msg = err.name === 'NotAllowedError' ? '마이크 권한이 필요합니다'
+              : '마이크를 초기화할 수 없습니다: ' + err.message;
+    toast(msg, 3500);
+  }
+}
+
 async function startRec() {
   try {
     let stream;
@@ -604,9 +625,10 @@ async function startRec() {
       prevVid.style.display = 'block';
       screenPh.style.display = 'none';
     } else {
-      // 오디오 스트림 재사용 (Android 마이크 권한 반복 요청 방지)
-      if (!S.cachedAudioStream || !S.cachedAudioStream.active) {
-        S.cachedAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // 캐시된 스트림 재사용 — getUserMedia는 앱 전체에서 최대 1회만 호출
+      if (!S.cachedAudioStream?.active) {
+        await initAudioStream();
+        if (!S.cachedAudioStream?.active) throw Object.assign(new Error('마이크 스트림을 가져올 수 없습니다'), { name: 'NotAllowedError' });
       }
       stream = S.cachedAudioStream;
       audioLbl.textContent = '녹음 중...';
@@ -711,17 +733,27 @@ const pad = n => String(n).padStart(2, '0');
    WAVEFORM
    ============================================================ */
 function startWave(stream) {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const analyser = ctx.createAnalyser();
+  // AudioContext를 매번 새로 만들지 않고 재사용 (close하면 Android에서 스트림이 끊길 수 있음)
+  if (!S.audioCtx || S.audioCtx.state === 'closed') {
+    S.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } else if (S.audioCtx.state === 'suspended') {
+    S.audioCtx.resume().catch(() => {});
+  }
+  const analyser = S.audioCtx.createAnalyser();
   analyser.fftSize = 256;
-  ctx.createMediaStreamSource(stream).connect(analyser);
-  S.audioCtx = ctx; S.analyser = analyser;
+  const source = S.audioCtx.createMediaStreamSource(stream);
+  source.connect(analyser);
+  S.analyser = analyser;
+  S.waveSource = source;
   animWave();
 }
 
 function stopWave() {
   if (S.rafId) { cancelAnimationFrame(S.rafId); S.rafId = null; }
-  if (S.audioCtx) { S.audioCtx.close(); S.audioCtx = null; S.analyser = null; }
+  // disconnect만 하고 close하지 않음 — close 시 Android Chrome에서 캐시 스트림 트랙이 종료될 수 있음
+  if (S.waveSource) { try { S.waveSource.disconnect(); } catch(e){} S.waveSource = null; }
+  if (S.analyser)   { try { S.analyser.disconnect();   } catch(e){} S.analyser = null; }
+  if (S.audioCtx)   { S.audioCtx.suspend().catch(() => {}); }
   clearCanvas();
 }
 
@@ -1169,6 +1201,8 @@ if (isMobile) {
   screenTab.classList.remove('on');
   audioTab.classList.add('on');
   S.mode = 'audio';
+  // 페이지 로드 직후 마이크 권한 1회 요청 (이후 녹화 시작 시 팝업 없음)
+  initAudioStream();
 }
 syncModeUI();
 </script>
