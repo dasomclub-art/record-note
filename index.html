@@ -452,11 +452,11 @@
   <div class="modal-box">
     <div class="modal-ico">🔑</div>
     <div class="modal-local-badge">⚡ 로컬 모드</div>
-    <div class="modal-title">Anthropic API 키 입력</div>
-    <div class="modal-desc">로컬 실행 시 브라우저에서 직접 API를 호출합니다.<br>키는 이 기기의 localStorage에만 저장됩니다.</div>
+    <div class="modal-title">OpenRouter API 키 입력 (무료)</div>
+    <div class="modal-desc">로컬 실행 시 브라우저에서 직접 OpenRouter API를 호출합니다.<br>키는 이 기기의 localStorage에만 저장됩니다.</div>
     <input class="modal-input" id="apiKeyInput" type="password"
-      placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
-    <div class="modal-hint">console.anthropic.com에서 발급 · 외부로 전송되지 않음</div>
+      placeholder="sk-or-..." autocomplete="off" spellcheck="false">
+    <div class="modal-hint"><a href="https://openrouter.ai" target="_blank" style="color:var(--accent)">openrouter.ai</a>에서 무료 발급 · 외부로 전송되지 않음</div>
     <div class="modal-btns">
       <button class="modal-submit" id="apiKeySubmit">저장하고 계속하기</button>
       <button class="modal-cancel" id="apiKeyCancel">취소</button>
@@ -1020,32 +1020,36 @@ async function callClaudeVercel(messages, systemPrompt) {
   return data.content?.[0]?.text || '';
 }
 
-// ── 브라우저 직접 호출 (로컬 환경 fallback) ────────────────────
+// ── 브라우저 직접 호출 (로컬 환경 fallback — OpenRouter) ───────
 async function callClaudeLocal(messages, systemPrompt) {
-  let apiKey = localStorage.getItem('local_anthropic_key');
+  let apiKey = localStorage.getItem('local_openrouter_key');
   if (!apiKey) {
     apiKey = await showApiKeyModal();
     if (!apiKey) throw new Error('API 키가 필요합니다');
   }
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const openaiMessages = [
+    ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+    ...messages,
+  ];
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'Authorization': `Bearer ${apiKey}`,
+      'HTTP-Referer': window.location.href,
+      'X-Title': 'RecordNote',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: 'google/gemini-2.0-flash-exp:free',
       max_tokens: 4096,
-      ...(systemPrompt ? { system: systemPrompt } : {}),
-      messages,
+      messages: openaiMessages,
     }),
   });
 
   if (res.status === 401) {
-    localStorage.removeItem('local_anthropic_key');
+    localStorage.removeItem('local_openrouter_key');
     throw new Error('API 키가 올바르지 않습니다. 다시 시도해주세요.');
   }
   if (!res.ok) {
@@ -1053,7 +1057,7 @@ async function callClaudeLocal(messages, systemPrompt) {
     throw new Error(d.error?.message || `API 오류 (${res.status})`);
   }
   const data = await res.json();
-  return data.content?.[0]?.text || '';
+  return data.choices?.[0]?.message?.content || '';
 }
 
 // ── API 키 모달 (Promise 기반) ─────────────────────────────────
@@ -1071,7 +1075,7 @@ function showApiKeyModal() {
     function onSubmit() {
       const key = input.value.trim();
       if (!key) return toast('API 키를 입력해주세요');
-      localStorage.setItem('local_anthropic_key', key);
+      localStorage.setItem('local_openrouter_key', key);
       modal.classList.add('hidden');
       cleanup();
       resolve(key);
