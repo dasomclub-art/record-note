@@ -504,6 +504,8 @@ const S = {
   rawText: '',
   cachedAudioStream: null, // 재사용 스트림 (Android 마이크 권한 1회)
   recStream: null,         // MediaRecorder용 클론 스트림 (stop 시 cachedAudioStream 보호)
+  lastFinalText: '',       // STT 중복 방지용
+  lastFinalMs: 0,
 };
 
 /* ============================================================
@@ -659,6 +661,8 @@ async function startRec() {
     S.startMs = Date.now();
     S.entries = [];
     S.interim = '';
+    S.lastFinalText = '';
+    S.lastFinalMs = 0;
     clearTx();
     startTimer();
     setRecUI(true);
@@ -864,12 +868,16 @@ function initSTT() {
   r.lang = S.lang; r.continuous = true; r.interimResults = true; r.maxAlternatives = 1;
 
   r.onresult = ev => {
+    const now = Date.now();
     let interim = '';
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
       const res = ev.results[i];
       if (res.isFinal) {
         const txt = res[0].transcript.trim();
-        if (txt) {
+        // Android Chrome: 재시작 후 이전 결과가 반복 재생되는 버그 방지 (3초 이내 동일 텍스트 무시)
+        if (txt && !(txt === S.lastFinalText && now - S.lastFinalMs < 3000)) {
+          S.lastFinalText = txt;
+          S.lastFinalMs = now;
           const sec = Math.floor((Date.now() - S.startMs) / 1000);
           S.entries.push({ t: `${pad(Math.floor(sec/60))}:${pad(sec%60)}`, text: txt });
           appendTxRow(S.entries.at(-1), false);
@@ -884,14 +892,24 @@ function initSTT() {
   };
 
   r.onerror = ev => {
-    if (ev.error === 'no-speech') return;
+    // aborted: stopRec()의 recog.abort() 호출 시 정상 발생 — 무시
+    if (ev.error === 'no-speech' || ev.error === 'aborted') return;
     console.warn('STT error', ev.error);
     if (ev.error === 'audio-capture') toast('마이크 접근 오류 — 다시 시도해주세요', 3500);
     else if (ev.error === 'not-allowed') toast('마이크 권한이 필요합니다', 3500);
     else if (ev.error === 'network') toast('STT 네트워크 오류', 3000);
     else toast('STT 오류: ' + ev.error, 3000);
   };
-  r.onend = () => { if (S.recording && S.recog === r) { try { r.start(); } catch(e){} } };
+
+  // Android Chrome: 같은 객체를 r.start()로 재시작하면 이전 결과가 반복 재생됨
+  // → onend 시 새 인스턴스로 initSTT() 재호출
+  r.onend = () => {
+    if (S.recording && S.recog === r) {
+      S.recog = null;
+      setTimeout(() => { if (S.recording) initSTT(); }, 150);
+    }
+  };
+
   r.start();
   S.recog = r;
   txPh.style.display = 'none';
