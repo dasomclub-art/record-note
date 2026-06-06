@@ -109,6 +109,14 @@
     .mic-ring {
       width: 44px; height: 44px; border-radius: 50%;
       background: rgba(49,130,246,.18); display: flex; align-items: center; justify-content: center; color: var(--accent);
+      transition: background .3s, transform .3s;
+    }
+    .mic-ring.active {
+      animation: mic-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes mic-pulse {
+      0%, 100% { transform: scale(1);    background: rgba(49,130,246,.18); }
+      50%       { transform: scale(1.22); background: rgba(49,130,246,.42); }
     }
     #waveCanvas { width: 100%; border-radius: 8px; display: block; }
     .audio-lbl { font-size: 13px; color: #546578; }
@@ -619,23 +627,32 @@ async function initAudioStream() {
 
 async function startRec() {
   try {
-    let stream;
+    let stream = null;
+
     if (S.mode === 'screen') {
+      // ── 화면 녹화 (PC) ──────────────────────────────────────
       stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' }, audio: true });
       prevVid.srcObject = stream;
       prevVid.style.display = 'block';
       screenPh.style.display = 'none';
+
+    } else if (isMobile) {
+      // ── 모바일 오디오: getUserMedia 사용 안 함 ───────────────
+      // Android Chrome에서 getUserMedia 스트림이 열려있으면
+      // SpeechRecognition이 마이크 접근에 실패 → STT 불가
+      // → getUserMedia/MediaRecorder 없이 STT만 사용
+      audioLbl.textContent = '녹음 중...';
+
     } else {
-      // 캐시된 스트림 재사용 — getUserMedia는 앱 전체에서 최대 1회만 호출
+      // ── PC 오디오 ────────────────────────────────────────────
       if (!S.cachedAudioStream?.active) {
         await initAudioStream();
         if (!S.cachedAudioStream?.active) throw Object.assign(new Error('마이크 스트림을 가져올 수 없습니다'), { name: 'NotAllowedError' });
       }
       stream = S.cachedAudioStream;
       audioLbl.textContent = '녹음 중...';
-      // startWave는 STT 이후에 호출 — AudioContext가 먼저 스트림을 잡으면
-      // Android Chrome에서 SpeechRecognition이 마이크 접근 실패
     }
+
     S.stream = stream;
     S.chunks = [];
     S.recording = true;
@@ -646,26 +663,27 @@ async function startRec() {
     startTimer();
     setRecUI(true);
 
-    // 1단계: STT 먼저 단독 시작
+    // ── STT 시작 (항상 최우선) ────────────────────────────────
     initSTT();
 
-    // 2단계: STT 안정화 대기 후 파형 시각화 (AudioContext 연결)
-    await new Promise(r => setTimeout(r, 400));
+    if (isMobile && S.mode === 'audio') {
+      // 모바일: pulse 애니메이션만, MediaRecorder 없음
+      startMobilePulse();
+      return;
+    }
+
+    // ── PC: 파형 + MediaRecorder ──────────────────────────────
+    await new Promise(r => setTimeout(r, 300));
     if (!S.recording) return;
+
     if (S.mode === 'audio') startWave(stream);
 
-    // 3단계: MediaRecorder 시작
-    await new Promise(r => setTimeout(r, 200));
-    if (!S.recording) return;
-
     const mime = bestMime();
-    // 오디오: 클론 스트림으로 MediaRecorder 보호 (stop 시 원본 트랙 종료 방지)
     S.recStream = S.mode === 'audio' ? stream.clone() : stream;
     S.recorder = new MediaRecorder(S.recStream, mime ? { mimeType: mime } : {});
     S.recorder.ondataavailable = e => e.data?.size && S.chunks.push(e.data);
     S.recorder.start(1000);
 
-    // 화면 공유 탭 닫기 등 트랙 종료 감지
     if (S.mode === 'screen') {
       stream.getTracks().forEach(t => { t.onended = () => { if (S.recording) stopRec(); }; });
     }
@@ -699,6 +717,7 @@ function stopRec() {
   S.recog = null;
   stopTimer();
   stopWave();
+  stopMobilePulse();
 
   if (S.mode === 'screen') {
     prevVid.srcObject = null;
@@ -826,6 +845,13 @@ function fillRound(gc, x, y, w, h, r) {
 
 /* draw idle line on load */
 window.addEventListener('load', clearCanvas);
+
+function startMobilePulse() {
+  document.querySelector('.mic-ring')?.classList.add('active');
+}
+function stopMobilePulse() {
+  document.querySelector('.mic-ring')?.classList.remove('active');
+}
 
 /* ============================================================
    STT
