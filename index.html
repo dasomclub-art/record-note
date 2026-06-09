@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>RecordNote — 회의 &amp; 강의 녹화</title>
+  <title>Insight Note AI — 회의 &amp; 강의 녹화</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" as="style" crossorigin
     href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
@@ -306,7 +306,7 @@
             <circle cx="9" cy="9" r="7.5" stroke="#fff" stroke-width="1.5" stroke-dasharray="2.5 2"/>
           </svg>
         </div>
-        RecordNote
+        Insight Note AI
       </a>
 
       <div class="seg" id="typeSeg">
@@ -640,13 +640,10 @@ async function startRec() {
 
     } else if (isMobile) {
       // ── 모바일 오디오 ────────────────────────────────────────
-      // SpeechRecognition은 getUserMedia와 별도로 마이크 권한이 필요
-      // → 권한만 확보하고 트랙을 즉시 해제 (스트림 유지 안 함)
-      // 두 번째 녹화부터는 micPermGranted로 스킵
-      if (!S.micPermGranted) {
+      // 스트림을 살려두어야 SpeechRecognition 재시작 시 권한 팝업 재출현 방지
+      if (!S.cachedAudioStream?.active) {
         try {
-          const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
-          tmp.getTracks().forEach(t => t.stop());
+          S.cachedAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           S.micPermGranted = true;
         } catch(e) {
           if (e.name === 'NotAllowedError') throw e;
@@ -1179,7 +1176,7 @@ async function callClaudeLocal(messages, systemPrompt) {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
       'HTTP-Referer': window.location.href,
-      'X-Title': 'RecordNote',
+      'X-Title': 'Insight Note AI',
     },
     body: JSON.stringify({
       model: 'google/gemma-4-31b-it:free',
