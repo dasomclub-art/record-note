@@ -640,10 +640,13 @@ async function startRec() {
 
     } else if (isMobile) {
       // ── 모바일 오디오 ────────────────────────────────────────
-      // 스트림을 살려두어야 SpeechRecognition 재시작 시 권한 팝업 재출현 방지
-      if (!S.cachedAudioStream?.active) {
+      // SpeechRecognition은 getUserMedia와 별도로 마이크 권한이 필요
+      // → 권한만 확보하고 트랙을 즉시 해제 (스트림 유지 안 함)
+      // 두 번째 녹화부터는 micPermGranted로 스킵
+      if (!S.micPermGranted) {
         try {
-          S.cachedAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+          tmp.getTracks().forEach(t => t.stop());
           S.micPermGranted = true;
         } catch(e) {
           if (e.name === 'NotAllowedError') throw e;
